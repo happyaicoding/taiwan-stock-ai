@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>📈 台股 AI 全市場選股與量化分析平台</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root{--ink:#172033;--muted:#64748b;--line:#e7edf5;--soft:#f7f9fc;--blue:#2563eb;--blue2:#1d4ed8;--green:#16a34a;--amber:#d97706;--red:#dc2626;--shadow:0 12px 35px rgba(15,23,42,.07)}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Arial,sans-serif;background:linear-gradient(180deg,#f4f7fb 0,#f8fafc 420px,#f4f6fa 100%);color:var(--ink);line-height:1.65}
+    header{background:linear-gradient(120deg,#172554 0%,#1d4ed8 52%,#2563eb 100%);color:#fff;padding:30px 5% 28px;position:relative;overflow:hidden}
+    header:after{content:"";position:absolute;width:420px;height:420px;border-radius:50%;right:-150px;top:-260px;background:rgba(255,255,255,.09)}
+    header h1{position:relative;margin:0 0 6px;font-size:30px;letter-spacing:-.5px;z-index:1} header p{position:relative;margin:0;opacity:.9;font-size:15px;z-index:1}
+    nav{position:sticky;top:0;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);z-index:20;padding:10px 5%;display:flex;gap:8px;overflow:auto;box-shadow:0 2px 12px rgba(15,23,42,.04)}
+    nav button{border:1px solid transparent;background:#eef3ff;color:#23304a;padding:10px 15px;border-radius:999px;cursor:pointer;white-space:nowrap;font-weight:700;transition:.2s} nav button:hover{transform:translateY(-1px)} nav button.active{background:var(--blue);color:#fff;box-shadow:0 5px 15px rgba(37,99,235,.22)}
+    main{width:min(1420px,92%);margin:24px auto 60px}.panel{display:none;background:#fff;border:1px solid rgba(226,232,240,.9);border-radius:22px;padding:24px;box-shadow:var(--shadow)}.panel.active{display:block}
+    .panel>h2{margin:0 0 20px;font-size:25px;letter-spacing:-.3px}.panel>h2:after{content:"";display:block;width:44px;height:4px;background:var(--blue);border-radius:9px;margin-top:8px}
+    .controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:18px;padding:16px;background:var(--soft);border:1px solid var(--line);border-radius:16px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-weight:800;font-size:13px;color:#334155}.field input,.field select{padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;min-width:130px;background:#fff;color:var(--ink);font-size:14px;outline:none}.field input:focus,.field select:focus{border-color:#7aa2ff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+    button.primary{background:linear-gradient(135deg,var(--blue),var(--blue2));color:#fff;border:0;border-radius:11px;padding:12px 18px;font-weight:800;cursor:pointer;box-shadow:0 7px 16px rgba(37,99,235,.18)}button.primary:hover{filter:brightness(1.04);transform:translateY(-1px)}
+    .status{margin:12px 2px 16px;color:#475569;white-space:pre-wrap;font-weight:650}.notice{padding:13px 16px;background:#fff8ed;border:1px solid #fed7aa;border-radius:12px;margin:14px 0 20px;color:#7c4a03}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}th,td{padding:10px 11px;border-bottom:1px solid #eef2f7;text-align:left;white-space:nowrap}th{background:#f8fafc;color:#334155;font-weight:800;position:sticky;top:0;z-index:1}tbody tr:hover{background:#f8fbff}tbody tr:last-child td{border-bottom:0}
+    #plot{height:720px;min-height:520px;margin:0 0 22px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff}
+    .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;min-width:0;box-shadow:0 5px 18px rgba(15,23,42,.035)}.card h3{margin:0 0 13px;font-size:17px;display:flex;align-items:center;gap:6px}.markdown{line-height:1.8;color:#334155;overflow-wrap:anywhere}.markdown p{margin:0 0 12px}.markdown h1,.markdown h2,.markdown h3,.markdown h4{margin:18px 0 9px;color:var(--ink);line-height:1.35}.markdown h1{font-size:21px}.markdown h2{font-size:19px}.markdown h3{font-size:17px}.markdown h4{font-size:15px}.markdown ul{margin:8px 0 14px;padding-left:22px}.markdown li{margin:6px 0}.markdown hr{border:0;border-top:1px solid var(--line);margin:16px 0}.markdown code{padding:2px 6px;border-radius:6px;background:#f1f5f9;font-size:.92em}.markdown h3,.markdown h4{margin:16px 0 8px;color:#172033}.markdown ul{margin:6px 0 12px;padding-left:20px}.markdown li{margin:5px 0}.markdown strong{color:#172033}.markdown .metric{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px dashed #e2e8f0}.markdown .metric:last-child{border-bottom:0}.signal{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;background:#f1f5f9;font-size:12px;font-weight:800}.signal.green{background:#ecfdf3;color:#15803d}.signal.red{background:#fef2f2;color:#b91c1c}.signal.amber{background:#fffbeb;color:#b45309}
+    #newsTable{margin-top:10px}.news-title{font-size:19px;margin:22px 0 12px}.small{font-size:13px;color:var(--muted)}
+    .section-head{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:12px}.section-head .small{margin-bottom:3px}
+    @media(max-width:900px){.cards{grid-template-columns:1fr}#plot{height:600px}header h1{font-size:24px}}
+    @media(max-width:600px){main{width:94%;margin-top:14px}.panel{padding:16px;border-radius:16px}.controls{padding:12px}.field,.field input,.field select{width:100%}.field input,.field select{min-width:0}.controls button.primary{width:100%}#plot{height:520px;min-height:420px}.panel>h2{font-size:22px}nav{padding-left:3%;padding-right:3%}}
+  </style>
+</head>
+<body>
+<header><h1>📈 台股 AI 全市場選股與量化分析平台</h1><p>從「看一檔股票」升級成「先掃市場 → 排名 → 再深度分析」｜無 Gradio 版本</p></header>
+<nav>
+  <button class="active" data-tab="scan">🚀 全市場選股</button><button data-tab="gainers">🔥 漲幅前100</button><button data-tab="analyze">📊 單檔深度分析</button><button data-tab="watchlist">🎯 自選股排名</button><button data-tab="rules">📚 指標與規則</button>
+</nav>
+<main>
+<section id="scan" class="panel active"><h2>🚀 全市場選股雷達</h2><div class="controls"><div class="field"><label>掃描市場</label><select id="scanMarket"><option>上市＋上櫃</option><option>上市</option><option>上櫃</option></select></div><div class="field"><label>深度分析檔數</label><select id="candidate"><option>30</option><option>50</option><option selected>60</option><option>80</option><option>100</option><option>120</option></select></div><div class="field"><label>最低入選分數</label><input id="minScore" type="number" value="60" min="0" max="100" step="5"></div><button class="primary" onclick="runScan()">🔎 開始全市場選股</button></div><div id="scanStatus" class="status"></div><div id="scanTable"></div></section>
+<section id="gainers" class="panel"><h2>🔥 今日市場最強勢股票</h2><div class="controls"><div class="field"><label>市場</label><select id="gainMarket"><option>上市＋上櫃</option><option>上市</option><option>上櫃</option></select></div><div class="field"><label>顯示數量</label><select id="topN"><option>20</option><option>50</option><option selected>100</option></select></div><div class="field"><label>最低成交金額（億元）</label><input id="minValue" type="number" value="0" min="0" step="1"></div><button class="primary" onclick="runGainers()">🔥 取得漲幅排行</button></div><div id="gainStatus" class="status"></div><div id="gainTable"></div></section>
+<section id="analyze" class="panel"><h2>🔬 單檔深度研究站</h2><div class="controls"><div class="field"><label>股票代號</label><input id="ticker" value="2330"></div><div class="field"><label>資料區間</label><select id="period"><option>3mo</option><option>6mo</option><option selected>1y</option><option>2y</option><option>3y</option><option>5y</option><option>max</option></select></div><button class="primary" onclick="runAnalyze()">🚀 執行完整個股分析</button></div><div id="analyzeStatus" class="status"></div><div id="bias" class="notice"></div><div id="plot"></div><div class="cards"><div class="card"><h3>📌 技術指標總覽</h3><div id="indicator" class="markdown"></div></div><div class="card"><h3>📈 MACD 深度判別</h3><div id="macd" class="markdown"></div></div><div class="card"><h3>🧭 領先／先行訊號</h3><div id="leading" class="markdown"></div></div><div class="card"><h3>📰 新聞事件分析</h3><div id="newsAnalysis" class="markdown"></div></div></div><div class="card" style="margin-top:16px"><h3>🤖 Gemini 綜合 AI 研究報告</h3><div id="ai" class="markdown"></div></div><h3 class="news-title">📰 FinMind 最近新聞</h3><div id="newsTable"></div></section>
+<section id="watchlist" class="panel"><h2>🎯 自選股排名</h2><div class="controls"><div class="field" style="min-width:420px"><label>股票代號（逗號分隔）</label><input id="watch" value="2330,2317,2454,2308,2382,3231,6669,3017"></div><button class="primary" onclick="runWatchlist()">排名自選股</button></div><div id="watchStatus" class="status"></div><div id="watchTable"></div></section>
+<section id="rules" class="panel"><h2>📚 指標與選股規則</h2><div class="notice">這是研究與篩選工具，不是獲利保證。高分代表目前條件較完整，不代表未來一定上漲。</div><h3>量化評分</h3><p>趨勢結構 25＋動能 20＋量價 15＋突破 15＋相對強弱 10＋風險控制 5＋估值加分最多 4。</p><h3>技術指標</h3><p>MA20 / MA60 / MA120、EMA50 / EMA200、RSI、MACD、KD、CCI、Williams %R、MFI、PSY、ATR、Bollinger、量比、OBV、5/20/60 日動能與前高突破。</p><h3>架構</h3><p>原生 HTML/CSS/JavaScript → FastAPI → yfinance / TWSE / TPEx / FinMind / Gemini → JSON → 前端 Plotly 與表格。</p></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active')});
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function inlineMd(s){
+  let x=esc(s);
+  x=x.replace(/`([^`]+)`/g,'<code>$1</code>');
+  x=x.replace(/\*\*([^*
+]+)\*\*/g,'<strong>$1</strong>');
+  x=x.replace(/__([^_
+]+)__/g,'<strong>$1</strong>');
+  x=x.replace(/\*([^*
+]+)\*/g,'<em>$1</em>');
+  return x;
+}
+function md(text){
+  const raw=String(text??'').replace(//g,'').trim();
+  if(!raw)return '<p class="small">目前沒有內容</p>';
+  const lines=raw.split('
+');
+  let html='', inList=false, paragraph=[];
+  const closeList=()=>{if(inList){html+='</ul>';inList=false}};
+  const flushParagraph=()=>{if(paragraph.length){html+='<p>'+paragraph.map(inlineMd).join('<br>')+'</p>';paragraph=[]}};
+  for(let line of lines){
+    const t=line.trim();
+    if(!t){flushParagraph();closeList();continue}
+    if(/^#{1,4}\s+/.test(t)){
+      flushParagraph();closeList();
+      const m=t.match(/^(#{1,4})\s+(.+)$/);
+      const level=Math.min(4,m[1].length);
+      html+=`<h${level}>${inlineMd(m[2])}</h${level}>`;
+      continue;
+    }
+    if(/^[-*•]\s+/.test(t)){
+      flushParagraph();
+      if(!inList){html+='<ul>';inList=true}
+      html+='<li>'+inlineMd(t.replace(/^[-*•]\s+/,''))+'</li>';
+      continue;
+    }
+    if(/^(---+|___+|\*\*\*+)$/.test(t)){
+      flushParagraph();closeList();html+='<hr>';continue;
+    }
+    closeList();
+    paragraph.push(t);
+  }
+  flushParagraph();closeList();
+  return html;
+}
+
+function table(data){if(!data||!data.length)return '<p class="small">沒有資料</p>';const cols=Object.keys(data[0]);return '<div class="table-wrap"><table><thead><tr>'+cols.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr></thead><tbody>'+data.map(r=>'<tr>'+cols.map(c=>`<td>${esc(r[c])}</td>`).join('')+'</tr>').join('')+'</tbody></table></div>'}
+const API_BASE = "https://taiwan-stock-ai-00iw.onrender.com";
+async function api(url,opt){
+  const target = url.startsWith("http") ? url : API_BASE + url;
+  const r = await fetch(target,opt);
+  const text = await r.text();
+  let j;
+  try { j = text ? JSON.parse(text) : {}; } catch (_) {
+    throw new Error(`API ${r.status}：${text || "伺服器沒有回傳內容"}`);
+  }
+  if(!r.ok) throw new Error(j.detail || j.message || `API ${r.status} 錯誤`);
+  return j;
+}
+async function runScan(){ $('scanStatus').textContent='⏳ 正在抓取市場快照與歷史 K 線，請稍候…';try{const q=new URLSearchParams({market:$('scanMarket').value,candidate_count:$('candidate').value,min_score:$('minScore').value});const j=await api('/api/scan?'+q);$('scanStatus').textContent=j.status;$('scanTable').innerHTML=table(j.data)}catch(e){$('scanStatus').textContent='❌ '+e.message}}
+async function runGainers(){ $('gainStatus').textContent='⏳ 正在取得最新市場資料…';try{const q=new URLSearchParams({market:$('gainMarket').value,top_n:$('topN').value,min_trade_value:$('minValue').value});const j=await api('/api/gainers?'+q);$('gainStatus').textContent=j.status;$('gainTable').innerHTML=table(j.data)}catch(e){$('gainStatus').textContent='❌ '+e.message}}
+async function runWatchlist(){ $('watchStatus').textContent='⏳ 正在分析自選股…';try{const j=await api('/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:$('watch').value})});$('watchStatus').textContent=j.status;$('watchTable').innerHTML=table(j.data)}catch(e){$('watchStatus').textContent='❌ '+e.message}}
+async function runAnalyze(){ $('analyzeStatus').textContent='⏳ 正在下載資料、計算指標與整理新聞…';try{const j=await api('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:$('ticker').value,period:$('period').value})});$('analyzeStatus').textContent='✅ 分析完成：'+j.ticker;$('bias').textContent=j.bias;$('indicator').innerHTML=md(j.indicator_summary);$('macd').innerHTML=md(j.macd_analysis);$('leading').innerHTML=md(j.leading_analysis);$('newsAnalysis').innerHTML=md(j.news_analysis);$('ai').innerHTML=md(j.ai_analysis);$('newsTable').innerHTML=table(j.news);Plotly.newPlot('plot',j.plot.data,j.plot.layout,{responsive:true});}catch(e){$('analyzeStatus').textContent='❌ '+e.message}}
+</script>
+</body></html>
