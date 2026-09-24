@@ -76,7 +76,7 @@ def health():
     return {
         "status": "ok",
         "finmind_configured": bool(os.environ.get("FINMIND_TOKEN")),
-        "gemini_configured": bool(os.environ.get("GEMINI_API_KEY")),
+        "minimax_configured": bool(os.environ.get("MINIMAX_API_KEY")),
         "gradio": False,
     }
 

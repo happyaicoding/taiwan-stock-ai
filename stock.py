@@ -1,6 +1,7 @@
 # STEP 23: 分析程式碼重構為模組化 stock.py*
 
 import os
+import re
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -26,7 +27,8 @@ class StockAnalyzer:
         self.mega_df_cleaned_final = pd.DataFrame() # 最終特徵矩陣
         self.final_feature_cols = []
         self.finmind_token = os.environ.get('FINMIND_TOKEN')
-        self.gemini_api_key = os.environ.get('GEMINI_API_KEY')
+        self.minimax_api_key = os.environ.get('MINIMAX_API_KEY')
+        self.minimax_model = os.environ.get('MINIMAX_MODEL', 'MiniMax-M3')
         self.model_mega = None # 儲存訓練好的模型
         self.X_test_mega = pd.DataFrame() # 儲存測試集特徵
         self.y_pred_mega = np.array([]) # 儲存測試集預測結果
@@ -112,14 +114,75 @@ class StockAnalyzer:
         out = pd.DataFrame(rows).drop_duplicates(subset=["日期", "標題"]).sort_values("日期", ascending=False)
         return out.head(30).reset_index(drop=True)
 
+    # period 字串 -> 往前回推的日曆天數（略多留緩衝，扣掉週末/假日後仍足夠交易日）。
+    _PERIOD_CALENDAR_DAYS = {
+        "60d": 100, "3mo": 100, "6mo": 200, "1y": 400,
+        "2y": 760, "3y": 1140, "5y": 1900,
+    }
+    # 對應各 period 至少該有的資料筆數，明顯不足時視為 FinMind 資料不完整、改用 yfinance。
+    _PERIOD_MIN_ROWS = {
+        "60d": 25, "3mo": 40, "6mo": 90, "1y": 180,
+        "2y": 350, "3y": 500, "5y": 800, "max": 180,
+    }
+
+    def _period_to_start_date(self, period, end_date):
+        if period == "max":
+            return pd.Timestamp("2000-01-01").date()
+        days = self._PERIOD_CALENDAR_DAYS.get(period, 400)
+        return end_date - pd.Timedelta(days=days)
+
+    def _fetch_price_finmind(self, period="1y", ticker=None):
+        """嘗試從 FinMind 抓取股價 K 線，取代 yfinance 作為主要資料源。
+
+        沒有設定 Token、查無資料、或欄位不完整時一律回傳 None，
+        由呼叫端自動退回 yfinance，絕不讓整個流程因 FinMind 問題而失敗。
+        """
+        if not self.finmind_token:
+            return None
+        ticker = ticker or self.ticker
+        try:
+            end_date = pd.Timestamp.now(tz="Asia/Taipei").date()
+            start_date = self._period_to_start_date(period, end_date)
+            df = self._fetch_finmind_api_data(
+                "TaiwanStockPrice", ticker,
+                start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"),
+            )
+            if df.empty:
+                return None
+            df = df.rename(columns={"max": "high", "min": "low", "Trading_Volume": "volume"})
+            required = ["open", "high", "low", "close", "volume"]
+            if not all(c in df.columns for c in required):
+                return None
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.sort_values("date").drop_duplicates(subset=["date"]).set_index("date")
+            df = df[required].apply(pd.to_numeric, errors="coerce")
+            df = df.dropna(subset=["close"])
+            min_rows = self._PERIOD_MIN_ROWS.get(period, 30)
+            if len(df) < min_rows:
+                return None
+            return df
+        except Exception as e:
+            print(f"FinMind 股價資料處理失敗，改用 yfinance：{e}")
+            return None
+
     def fetch_data(self, period='3y'):
-        """下載股票數據、財報、法人籌碼、融資融券、期貨借券等數據。"""
+        """下載股票數據、財報、法人籌碼、融資融券、期貨借券等數據。
+
+        股價 K 線優先嘗試 FinMind（台股專門資料源，涵蓋率較穩定），
+        沒有 Token、資料不足或發生例外時自動退回 yfinance，確保功能不因單一來源問題而中斷。
+        """
         print(f"\n----- 開始為 {self.ticker} 下載數據 (期間: {period}) -----")
-        self.df = yf.download(f'{self.ticker}.TW', period=period, progress=False)
-        if self.df.empty:
-            print(f"錯誤: 無法下載 {self.ticker}.TW 的 K 線數據。")
-            return False
-        self.df = self._fix_col_names(self.df)
+        finmind_df = self._fetch_price_finmind(period)
+        if finmind_df is not None:
+            self.df = finmind_df
+            print(f"股價來源：FinMind（{len(self.df)} 筆）")
+        else:
+            self.df = yf.download(f'{self.ticker}.TW', period=period, progress=False)
+            if self.df.empty:
+                print(f"錯誤: 無法下載 {self.ticker}.TW 的 K 線數據。")
+                return False
+            self.df = self._fix_col_names(self.df)
+            print(f"股價來源：yfinance（{len(self.df)} 筆）")
         self.df.index = pd.to_datetime(self.df.index)
 
         # 均線
@@ -356,28 +419,51 @@ class StockAnalyzer:
         return f"## 📰 {self.ticker} 最近 {days} 日新聞分析\n\n資料已由後端安全連線整理完成。"
 
     def get_ai_prediction_text(self):
-        if not self.gemini_api_key:
-            return "Gemini API Key 未設定，無法提供 AI 盤勢分析。"
+        """呼叫 MiniMax Chat Completion API，產生台股盤勢的 AI 文字分析。"""
+        if not self.minimax_api_key:
+            return "MiniMax API Key 未設定，無法提供 AI 盤勢分析。"
         if self.df.empty:
             return "無足夠數據進行 AI 盤勢分析。"
+        prompt = f"請簡要分析台股 {self.ticker} 目前走勢：收盤價 {self.df['close'].iloc[-1]}，RSI {self.df['rsi'].iloc[-1]:.1f}，均線多空狀態。請給出客觀分析。"
+        # OpenAI 相容端點：https://platform.minimax.cn/docs/api-reference/text-openai-api
+        # 不需要 GroupId，僅需 Bearer Token；回應結構與 OpenAI Chat Completions 相同。
+        url = "https://api.minimax.cn/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.minimax_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.minimax_model,
+            "messages": [
+                {"role": "system", "content": "你是專業的台股技術分析助手，回答請客觀、精簡，避免投資建議用語。"},
+                {"role": "user", "content": prompt},
+            ],
+        }
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=self.gemini_api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            prompt = f"請簡要分析台股 {self.ticker} 目前走勢：收盤價 {self.df['close'].iloc[-1]}，RSI {self.df['rsi'].iloc[-1]:.1f}，均線多空狀態。請給出客觀分析。"
-            return model.generate_content(prompt).text
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            choices = data.get("choices") or []
+            if choices:
+                content = (choices[0].get("message") or {}).get("content", "").strip()
+                if content:
+                    return content
+            return f"呼叫 MiniMax API 未取得有效回應：{data}"
         except Exception as e:
-            return f"呼叫 Gemini API 發生錯誤: {e}"
+            return f"呼叫 MiniMax API 發生錯誤: {e}"
 
     def scan_watchlist(self, tickers_str: str):
         results = []
         tickers = [t.strip() for t in tickers_str.split(',') if t.strip()]
         for ticker in tickers:
             try:
-                sym = f"{ticker}.TW" if not ticker.endswith((".TW", ".TWO")) else ticker
-                df = yf.download(sym, period='60d', progress=False)
-                if df.empty: continue
-                df = self._fix_col_names(df)
+                bare_ticker = ticker.upper().replace(".TW", "").replace(".TWO", "")
+                df = self._fetch_price_finmind("60d", ticker=bare_ticker)
+                if df is None:
+                    sym = f"{ticker}.TW" if not ticker.endswith((".TW", ".TWO")) else ticker
+                    df = yf.download(sym, period='60d', progress=False)
+                    if df.empty: continue
+                    df = self._fix_col_names(df)
                 c = df['close'].iloc[-1]
                 p = df['close'].iloc[-2]
                 pct = (c - p) / p * 100
@@ -388,15 +474,309 @@ class StockAnalyzer:
         return pd.DataFrame(results)
 
 class TaiwanMarketScanner:
+    """台股全市場快照與量化選股掃描器。
+
+    資料來源：
+    - 上市：TWSE OpenAPI STOCK_DAY_ALL（當日全上市個股收盤資訊）
+    - 上櫃：TPEx OpenAPI tpex_mainboard_daily_close_quotes（當日全上櫃個股收盤資訊）
+    兩者皆為公開、無需金鑰的政府/交易所開放資料 API。
+    """
+
     TWSE_URL = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
     TPEx_URL = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
 
+    # 一般個股代碼為 4 位數字，但 00 開頭保留給 ETF（如 0050、0056），故排除之。
+    _STOCK_CODE_RE = re.compile(r"^(?!00)\d{4}$")
+
+    def _fetch_twse_snapshot(self):
+        """抓 TWSE 當日全市場快照，只保留一般股票（4 位數字代號），排除 ETF/權證/債券。"""
+        try:
+            resp = requests.get(self.TWSE_URL, timeout=20)
+            resp.raise_for_status()
+            rows = resp.json()
+        except Exception as e:
+            print(f"TWSE 市場快照取得失敗：{e}")
+            return pd.DataFrame()
+
+        records = []
+        for r in rows or []:
+            code = str(r.get("Code", "")).strip()
+            if not self._STOCK_CODE_RE.match(code):
+                continue
+            try:
+                close = float(r.get("ClosingPrice") or 0)
+                change = float(r.get("Change") or 0)
+                volume = float(r.get("TradeVolume") or 0)
+                trade_value = float(r.get("TradeValue") or 0)
+            except (TypeError, ValueError):
+                continue
+            if close <= 0:
+                continue
+            prev_close = close - change
+            pct = (change / prev_close * 100) if prev_close else 0.0
+            records.append({
+                "股票代號": code,
+                "股票名稱": str(r.get("Name", "")).strip(),
+                "市場": "上市",
+                "收盤價": close,
+                "漲跌": change,
+                "漲跌幅(%)": round(pct, 2),
+                "成交量": volume,
+                "成交金額": trade_value,
+            })
+        return pd.DataFrame(records)
+
+    def _fetch_tpex_snapshot(self):
+        """抓 TPEx 當日全市場快照，只保留一般股票（4 位數字代號），排除 ETF/權證/債券。"""
+        try:
+            resp = requests.get(self.TPEx_URL, timeout=20)
+            resp.raise_for_status()
+            rows = resp.json()
+        except Exception as e:
+            print(f"TPEx 市場快照取得失敗：{e}")
+            return pd.DataFrame()
+
+        records = []
+        for r in rows or []:
+            code = str(r.get("SecuritiesCompanyCode", "")).strip()
+            if not self._STOCK_CODE_RE.match(code):
+                continue
+            try:
+                close = float(r.get("Close") or 0)
+                change = float(r.get("Change") or 0)  # TPEx 已含正負號（例如 "+0.02"）
+                volume = float(r.get("TradingShares") or 0)
+                trade_value = float(r.get("TransactionAmount") or 0)
+            except (TypeError, ValueError):
+                continue
+            if close <= 0:
+                continue
+            prev_close = close - change
+            pct = (change / prev_close * 100) if prev_close else 0.0
+            records.append({
+                "股票代號": code,
+                "股票名稱": str(r.get("CompanyName", "")).strip(),
+                "市場": "上櫃",
+                "收盤價": close,
+                "漲跌": change,
+                "漲跌幅(%)": round(pct, 2),
+                "成交量": volume,
+                "成交金額": trade_value,
+            })
+        return pd.DataFrame(records)
+
     def get_market_snapshot(self, market="上市＋上櫃"):
-        # 實作市場快照
-        return pd.DataFrame()
+        """依市場別（上市／上櫃／上市＋上櫃）抓取並合併當日全市場快照。"""
+        frames = []
+        if "上市" in market:
+            frames.append(self._fetch_twse_snapshot())
+        if "上櫃" in market:
+            frames.append(self._fetch_tpex_snapshot())
+        frames = [f for f in frames if f is not None and not f.empty]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
 
     def get_top_gainers(self, market="上市＋上櫃", top_n=100, min_trade_value=0):
-        return pd.DataFrame(), "完成漲幅排行查詢。"
+        """依成交金額門檻篩選後，依漲跌幅排序取前 N 檔。"""
+        snapshot = self.get_market_snapshot(market)
+        if snapshot.empty:
+            return pd.DataFrame(), "無法取得市場快照，請確認網路連線或稍後再試。"
+
+        min_value_yuan = float(min_trade_value or 0) * 1e8  # 前端單位為「億元」
+        filtered = snapshot[snapshot["成交金額"] >= min_value_yuan] if min_value_yuan > 0 else snapshot
+        if filtered.empty:
+            return pd.DataFrame(), f"共 {len(snapshot)} 檔納入計算，但沒有股票符合最低成交金額門檻。"
+
+        result = filtered.sort_values("漲跌幅(%)", ascending=False).head(int(top_n)).reset_index(drop=True)
+        result.insert(0, "排名", range(1, len(result) + 1))
+        status = f"完成漲幅排行查詢，共 {len(snapshot)} 檔納入計算，符合門檻 {len(filtered)} 檔，取前 {len(result)} 檔。"
+        return result, status
+
+    def _score_stock(self, d, r):
+        """依技術指標計算單檔個股的量化評分（趨勢結構/動能/量價/突破/風險控制，滿分 80）。
+
+        對應 index.html「指標與規則」頁面公告的評分權重：
+        趨勢結構25＋動能20＋量價15＋突破15＋風險控制5（相對強弱10、估值加分4 於外部另計）。
+        """
+        detail = {}
+
+        def num(x):
+            try:
+                v = float(x)
+                return v if np.isfinite(v) else np.nan
+            except (TypeError, ValueError):
+                return np.nan
+
+        close = num(r.get("close"))
+        ma20, ma60, ma120 = num(r.get("ma20")), num(r.get("ma60")), num(r.get("ma120"))
+
+        # 趨勢結構 25：多頭排列程度
+        trend = 0
+        if np.isfinite(close) and np.isfinite(ma20) and close > ma20:
+            trend += 7
+        if np.isfinite(ma20) and np.isfinite(ma60) and ma20 > ma60:
+            trend += 6
+        if np.isfinite(ma60) and np.isfinite(ma120) and ma60 > ma120:
+            trend += 6
+        if np.isfinite(close) and np.isfinite(ma120) and close > ma120:
+            trend += 6
+        detail["趨勢結構"] = trend
+
+        # 動能 20：RSI、MACD 排列與柱體、20 日動能
+        momentum = 0
+        rsi = num(r.get("rsi"))
+        macd_line, signal_line = num(r.get("macd_line")), num(r.get("signal_line"))
+        macd_hist = num(r.get("macd_histogram"))
+        mom20 = num(r.get("Momentum_20"))
+        if np.isfinite(rsi) and rsi > 50:
+            momentum += 5
+        if np.isfinite(macd_hist) and macd_hist > 0:
+            momentum += 5
+        if np.isfinite(macd_line) and np.isfinite(signal_line) and macd_line > signal_line:
+            momentum += 5
+        if np.isfinite(mom20) and mom20 > 0:
+            momentum += 5
+        detail["動能"] = momentum
+
+        # 量價 15：量比與 OBV 5 日斜率
+        vp = 0
+        vol_ratio = num(r.get("Volume_Ratio"))
+        if np.isfinite(vol_ratio):
+            if vol_ratio >= 1.2:
+                vp += 8
+            elif vol_ratio >= 1.0:
+                vp += 4
+        if len(d) > 6:
+            obv_slope = num(d["OBV"].iloc[-1] - d["OBV"].iloc[-6])
+            if np.isfinite(obv_slope) and obv_slope > 0:
+                vp += 7
+        detail["量價"] = vp
+
+        # 突破 15：近 60 日高點突破/逼近
+        breakout = 0
+        if len(d) > 61 and np.isfinite(close):
+            prior_high = num(d["high"].iloc[-61:-1].max())
+            if np.isfinite(prior_high) and prior_high > 0:
+                if close >= prior_high:
+                    breakout = 15
+                elif close >= prior_high * 0.97:
+                    breakout = 8
+        detail["突破"] = breakout
+
+        # 風險控制 5：ATR 相對股價的波動度落在合理區間
+        risk = 0
+        atr = num(r.get("atr"))
+        if np.isfinite(atr) and np.isfinite(close) and close > 0:
+            norm_atr = atr / close * 100
+            if 1.0 <= norm_atr <= 5.0:
+                risk = 5
+            elif norm_atr < 1.0 or 5.0 < norm_atr <= 8.0:
+                risk = 2
+        detail["風險控制"] = risk
+
+        base_score = trend + momentum + vp + breakout + risk
+        return base_score, detail
+
+    def _relative_strength_scores(self, roc_series):
+        """依 ROC_12 在候選池中的百分位排名換算相對強弱分數（滿分 10）。"""
+        ranks = roc_series.rank(pct=True, na_option="bottom")
+
+        def to_score(p):
+            if pd.isna(p):
+                return 0
+            if p >= 0.8:
+                return 10
+            if p >= 0.6:
+                return 7
+            if p >= 0.4:
+                return 5
+            if p >= 0.2:
+                return 3
+            return 0
+
+        return ranks.map(to_score)
+
+    def _valuation_bonus(self, analyzer, ticker):
+        """依 FinMind 本益比資料計算估值加分（滿分 4）；沒有 Token 或查無資料一律回傳 0。"""
+        if not analyzer.finmind_token:
+            return 0
+        try:
+            end_date = pd.Timestamp.now(tz="Asia/Taipei").date()
+            start_date = end_date - pd.Timedelta(days=10)
+            per_df = analyzer._fetch_finmind_api_data(
+                "TaiwanStockPER", ticker, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
+            )
+            if per_df.empty or "PER" not in per_df.columns:
+                return 0
+            per_df = per_df.dropna(subset=["PER"]).sort_values("date")
+            if per_df.empty:
+                return 0
+            per = float(per_df["PER"].iloc[-1])
+            if per <= 0:
+                return 0
+            if per <= 20:
+                return 4
+            if per <= 30:
+                return 2
+            return 0
+        except Exception:
+            return 0
 
     def scan(self, market="上市＋上櫃", candidate_count=60, min_score=60):
-        return pd.DataFrame(), "完成全市場選股掃描。"
+        """全市場選股掃描：先依成交金額取候選池，再逐檔計算技術面量化評分。"""
+        snapshot = self.get_market_snapshot(market)
+        if snapshot.empty:
+            return pd.DataFrame(), "無法取得市場快照，請確認網路連線或稍後再試。"
+
+        candidate_count = int(candidate_count)
+        pool = snapshot.sort_values("成交金額", ascending=False).head(candidate_count).reset_index(drop=True)
+
+        scored_rows = []
+        roc_values = []
+        for _, row in pool.iterrows():
+            ticker = row["股票代號"]
+            try:
+                analyzer = StockAnalyzer(ticker)
+                if not analyzer.fetch_data(period="1y"):
+                    continue
+                d = analyzer.df
+                if len(d) < 60:
+                    continue
+                r = d.iloc[-1]
+                base_score, detail = self._score_stock(d, r)
+                bonus = self._valuation_bonus(analyzer, ticker)
+                roc = r.get("ROC_12", np.nan)
+                scored_rows.append({
+                    "股票代號": ticker,
+                    "股票名稱": row["股票名稱"],
+                    "市場": row["市場"],
+                    "收盤價": row["收盤價"],
+                    "漲跌幅(%)": row["漲跌幅(%)"],
+                    **detail,
+                    "估值加分": bonus,
+                    "_base_total": base_score + bonus,
+                })
+                roc_values.append(roc)
+            except Exception as e:
+                print(f"掃描 {ticker} 失敗：{e}")
+                continue
+
+        if not scored_rows:
+            return pd.DataFrame(), f"已檢視 {len(pool)} 檔候選股，但沒有足夠歷史資料可供評分。"
+
+        result_df = pd.DataFrame(scored_rows)
+        result_df["相對強弱"] = self._relative_strength_scores(pd.Series(roc_values))
+        result_df["總分"] = (result_df["_base_total"] + result_df["相對強弱"]).round(1)
+        result_df = result_df.drop(columns=["_base_total"])
+
+        filtered = result_df[result_df["總分"] >= float(min_score)]
+        filtered = filtered.sort_values("總分", ascending=False).reset_index(drop=True)
+        filtered.insert(0, "排名", range(1, len(filtered) + 1))
+
+        cols = ["排名", "股票代號", "股票名稱", "市場", "收盤價", "漲跌幅(%)", "總分",
+                "趨勢結構", "動能", "量價", "突破", "相對強弱", "風險控制", "估值加分"]
+        filtered = filtered[[c for c in cols if c in filtered.columns]]
+
+        status = (f"完成全市場選股掃描，候選 {len(pool)} 檔（依成交金額排序），"
+                  f"入選 {len(filtered)} 檔（門檻 {min_score} 分）。")
+        return filtered, status

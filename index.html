@@ -37,9 +37,9 @@
 <main>
 <section id="scan" class="panel active"><h2>🚀 全市場選股雷達</h2><div class="controls"><div class="field"><label>掃描市場</label><select id="scanMarket"><option>上市＋上櫃</option><option>上市</option><option>上櫃</option></select></div><div class="field"><label>深度分析檔數</label><select id="candidate"><option>30</option><option>50</option><option selected>60</option><option>80</option><option>100</option><option>120</option></select></div><div class="field"><label>最低入選分數</label><input id="minScore" type="number" value="60" min="0" max="100" step="5"></div><button class="primary" onclick="runScan()">🔎 開始全市場選股</button></div><div id="scanStatus" class="status"></div><div id="scanTable"></div></section>
 <section id="gainers" class="panel"><h2>🔥 今日市場最強勢股票</h2><div class="controls"><div class="field"><label>市場</label><select id="gainMarket"><option>上市＋上櫃</option><option>上市</option><option>上櫃</option></select></div><div class="field"><label>顯示數量</label><select id="topN"><option>20</option><option>50</option><option selected>100</option></select></div><div class="field"><label>最低成交金額（億元）</label><input id="minValue" type="number" value="0" min="0" step="1"></div><button class="primary" onclick="runGainers()">🔥 取得漲幅排行</button></div><div id="gainStatus" class="status"></div><div id="gainTable"></div></section>
-<section id="analyze" class="panel"><h2>🔬 單檔深度研究站</h2><div class="controls"><div class="field"><label>股票代號</label><input id="ticker" value="2330"></div><div class="field"><label>資料區間</label><select id="period"><option>3mo</option><option>6mo</option><option selected>1y</option><option>2y</option><option>3y</option><option>5y</option><option>max</option></select></div><button class="primary" onclick="runAnalyze()">🚀 執行完整個股分析</button></div><div id="analyzeStatus" class="status"></div><div id="bias" class="notice"></div><div id="plot"></div><div class="cards"><div class="card"><h3>📌 技術指標總覽</h3><div id="indicator" class="markdown"></div></div><div class="card"><h3>📈 MACD 深度判別</h3><div id="macd" class="markdown"></div></div><div class="card"><h3>🧭 領先／先行訊號</h3><div id="leading" class="markdown"></div></div><div class="card"><h3>📰 新聞事件分析</h3><div id="newsAnalysis" class="markdown"></div></div></div><div class="card" style="margin-top:16px"><h3>🤖 Gemini 綜合 AI 研究報告</h3><div id="ai" class="markdown"></div></div><h3 class="news-title">📰 FinMind 最近新聞</h3><div id="newsTable"></div></section>
+<section id="analyze" class="panel"><h2>🔬 單檔深度研究站</h2><div class="controls"><div class="field"><label>股票代號</label><input id="ticker" value="2330"></div><div class="field"><label>資料區間</label><select id="period"><option>3mo</option><option>6mo</option><option selected>1y</option><option>2y</option><option>3y</option><option>5y</option><option>max</option></select></div><button class="primary" onclick="runAnalyze()">🚀 執行完整個股分析</button></div><div id="analyzeStatus" class="status"></div><div id="bias" class="notice"></div><div id="plot"></div><div class="cards"><div class="card"><h3>📌 技術指標總覽</h3><div id="indicator" class="markdown"></div></div><div class="card"><h3>📈 MACD 深度判別</h3><div id="macd" class="markdown"></div></div><div class="card"><h3>🧭 領先／先行訊號</h3><div id="leading" class="markdown"></div></div><div class="card"><h3>📰 新聞事件分析</h3><div id="newsAnalysis" class="markdown"></div></div></div><div class="card" style="margin-top:16px"><h3>🤖 MiniMax 綜合 AI 研究報告</h3><div id="ai" class="markdown"></div></div><h3 class="news-title">📰 FinMind 最近新聞</h3><div id="newsTable"></div></section>
 <section id="watchlist" class="panel"><h2>🎯 自選股排名</h2><div class="controls"><div class="field" style="min-width:420px"><label>股票代號（逗號分隔）</label><input id="watch" value="2330,2317,2454,2308,2382,3231,6669,3017"></div><button class="primary" onclick="runWatchlist()">排名自選股</button></div><div id="watchStatus" class="status"></div><div id="watchTable"></div></section>
-<section id="rules" class="panel"><h2>📚 指標與選股規則</h2><div class="notice">這是研究與篩選工具，不是獲利保證。高分代表目前條件較完整，不代表未來一定上漲。</div><h3>量化評分</h3><p>趨勢結構 25＋動能 20＋量價 15＋突破 15＋相對強弱 10＋風險控制 5＋估值加分最多 4。</p><h3>技術指標</h3><p>MA20 / MA60 / MA120、EMA50 / EMA200、RSI、MACD、KD、CCI、Williams %R、MFI、PSY、ATR、Bollinger、量比、OBV、5/20/60 日動能與前高突破。</p><h3>架構</h3><p>原生 HTML/CSS/JavaScript → FastAPI → yfinance / TWSE / TPEx / FinMind / Gemini → JSON → 前端 Plotly 與表格。</p></section>
+<section id="rules" class="panel"><h2>📚 指標與選股規則</h2><div class="notice">這是研究與篩選工具，不是獲利保證。高分代表目前條件較完整，不代表未來一定上漲。</div><h3>量化評分</h3><p>趨勢結構 25＋動能 20＋量價 15＋突破 15＋相對強弱 10＋風險控制 5＋估值加分最多 4。</p><h3>技術指標</h3><p>MA20 / MA60 / MA120、EMA50 / EMA200、RSI、MACD、KD、CCI、Williams %R、MFI、PSY、ATR、Bollinger、量比、OBV、5/20/60 日動能與前高突破。</p><h3>架構</h3><p>原生 HTML/CSS/JavaScript → FastAPI → yfinance / TWSE / TPEx / FinMind / MiniMax → JSON → 前端 Plotly 與表格。</p></section>
 </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -48,19 +48,15 @@ function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function inlineMd(s){
   let x=esc(s);
   x=x.replace(/`([^`]+)`/g,'<code>$1</code>');
-  x=x.replace(/\*\*([^*
-]+)\*\*/g,'<strong>$1</strong>');
-  x=x.replace(/__([^_
-]+)__/g,'<strong>$1</strong>');
-  x=x.replace(/\*([^*
-]+)\*/g,'<em>$1</em>');
+  x=x.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+  x=x.replace(/__([^_\n]+)__/g,'<strong>$1</strong>');
+  x=x.replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
   return x;
 }
 function md(text){
-  const raw=String(text??'').replace(//g,'').trim();
+  const raw=String(text??'').replace(/\r/g,'').trim();
   if(!raw)return '<p class="small">目前沒有內容</p>';
-  const lines=raw.split('
-');
+  const lines=raw.split('\n');
   let html='', inList=false, paragraph=[];
   const closeList=()=>{if(inList){html+='</ul>';inList=false}};
   const flushParagraph=()=>{if(paragraph.length){html+='<p>'+paragraph.map(inlineMd).join('<br>')+'</p>';paragraph=[]}};
@@ -91,7 +87,7 @@ function md(text){
 }
 
 function table(data){if(!data||!data.length)return '<p class="small">沒有資料</p>';const cols=Object.keys(data[0]);return '<div class="table-wrap"><table><thead><tr>'+cols.map(c=>`<th>${esc(c)}</th>`).join('')+'</tr></thead><tbody>'+data.map(r=>'<tr>'+cols.map(c=>`<td>${esc(r[c])}</td>`).join('')+'</tr>').join('')+'</tbody></table></div>'}
-const API_BASE = "https://taiwan-stock-ai-00iw.onrender.com";
+const API_BASE = "";  // 同源部署（本機或 NAS 上由 FastAPI 一併提供前端與 API）
 async function api(url,opt){
   const target = url.startsWith("http") ? url : API_BASE + url;
   const r = await fetch(target,opt);

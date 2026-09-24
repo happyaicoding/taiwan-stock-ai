@@ -1,0 +1,11 @@
+services:
+  taiwan-stock-ai:
+    build: .
+    container_name: taiwan-stock-ai
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - MINIMAX_MODEL=${MINIMAX_MODEL:-MiniMax-M3}
+      - FINMIND_TOKEN=${FINMIND_TOKEN}
